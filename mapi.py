@@ -24,6 +24,7 @@ class MoodleAPI(object):
         self.urlBase = configData["url"] # https://moodle.quixada.ufc.br
         self.urlCourse = self.urlBase + "/course/view.php?id=" + self.course
         self.urlNewVpl = self.urlBase + "/course/modedit.php?add=vpl&type=&course=" + self.course + "&section=" + self.section + "&return=0&sr=0"
+        self.urlUpdateVpl = self.urlBase + '/course/modedit.php?update=ID_QUESTAO'
         self.urlNewTest = self.urlBase + "/mod/vpl/forms/testcasesfile.php?id=ID_QUESTAO&edit=3" #troca ID_QUESTAO na hora do insert
         self.urlTestSave = self.urlBase + "/mod/vpl/forms/testcasesfile.json.php?id=ID_QUESTAO&action=save" #para fazer o download do teste
         self.urlFilesSave = self.urlBase + '/mod/vpl/forms/executionfiles.json.php?id=ID_QUESTAO&action=save' # para fazer o download dos arquivos de execuçaõ em configurações avançadas
@@ -41,10 +42,22 @@ class MoodleAPI(object):
             pass
         
     def addVpl(self, vpl):
-        self.browser.open(self.urlNewVpl)
-        self.login()
-
         print("Enviando a questão %s para a seção %s" %(vpl.name, self.section))
+        
+        self.submitVpl(self.urlNewVpl, vpl)
+
+        print("Questão adicionada com sucesso!!")
+
+    def update(self, vpl):
+        print("Atualizando a questão %s" % (vpl.name))
+
+        self.submitVpl(self.urlUpdateVpl.replace("ID_QUESTAO", vpl.id), vpl)
+
+        print("Questão atualizada com sucesso!!")    
+
+    def submitVpl(self, url, vpl):
+        self.browser.open(url)
+        self.login()
 
         try:
             self.browser.select_form(action='modedit.php')
@@ -58,9 +71,12 @@ class MoodleAPI(object):
         self.browser['introeditor[text]'] = vpl.description
         self.browser["duedate[enabled]"] = []
         self.browser.submit()
+
         print("Enviando os arquivos de execuções...")
 
-        vpl.id = self.getVplId(vpl.name)
+        if(not vpl.id):
+            vpl.id = self.getVplId(vpl.name)
+
         self.sendExecutionFiles(vpl)
 
     def sendExecutionFiles(self, vpl):
@@ -70,20 +86,6 @@ class MoodleAPI(object):
 
         self.browser.open(self.urlFilesSave.replace("ID_QUESTAO", vpl.id), 
                                data=files)
-
-    def update(self, id_questao, vpl):
-        self.browser.open(self.urlBase + '/course/modedit.php?update=' + id_questao)
-        self.login()
-        print("Atualizando a questão %s" % (vpl.name))
-
-        self.browser.select_form(action='modedit.php')
-        self.browser['name'] = vpl.name
-        self.browser['introeditor[text]'] = vpl.description
-        self.browser.submit()
-        params = {'files': vpl.executionFiles, 'comments': ''}
-        files = json.dumps(params, indent=2)
-        self.browser.open(self.urlFilesSave, data=files)
-        print("Questão atualizada com sucesso!!")
 
     def listAll(self):
         self.browser.open(self.urlCourse)
@@ -177,8 +179,9 @@ def main_add(args):
             api.addVpl(vpl)
         else:
             qid = api.getVplId(vpl.name)
+            vpl.id = qid
             print("Atualizando questao", qid)
-            api.update(qid, vpl)
+            api.update(vpl)
 
 def main_list(args):
     api = MoodleAPI(loadConfig(), "")
