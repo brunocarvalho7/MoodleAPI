@@ -85,7 +85,7 @@ class MoodleAPI(object):
         if(vpl.requiredFile):
             vplFiles.append(vpl.requiredFile)
         
-        self.sendVplFiles(self.urlReqFilesSave.replace("ID_QUESTAO", vpl.id), [vpl.requiredFile])
+        self.sendVplFiles(self.urlReqFilesSave.replace("ID_QUESTAO", vpl.id), vplFiles)
 
     def sendVplFiles(self, url, vplFiles):
         params = {'files': vplFiles,
