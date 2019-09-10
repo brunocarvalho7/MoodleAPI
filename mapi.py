@@ -27,7 +27,8 @@ class MoodleAPI(object):
         self.urlUpdateVpl = self.urlBase + '/course/modedit.php?update=ID_QUESTAO'
         self.urlNewTest = self.urlBase + "/mod/vpl/forms/testcasesfile.php?id=ID_QUESTAO&edit=3" #troca ID_QUESTAO na hora do insert
         self.urlTestSave = self.urlBase + "/mod/vpl/forms/testcasesfile.json.php?id=ID_QUESTAO&action=save" #para fazer o download do teste
-        self.urlFilesSave = self.urlBase + '/mod/vpl/forms/executionfiles.json.php?id=ID_QUESTAO&action=save' # para fazer o download dos arquivos de execuçaõ em configurações avançadas
+        self.urlFilesSave = self.urlBase + '/mod/vpl/forms/executionfiles.json.php?id=ID_QUESTAO&action=save' # para enviar os arquivos de execução
+        self.urlReqFilesSave = self.urlBase + '/mod/vpl/forms/requiredfiles.json.php?id=ID_QUESTAO&action=save' # para enviar os arquivos requeridos
         self.browser = mechanize.Browser()
         self.browser.set_handle_robots(False)
 
@@ -77,15 +78,21 @@ class MoodleAPI(object):
         if(not vpl.id):
             vpl.id = self.getVplId(vpl.name)
 
-        self.sendExecutionFiles(vpl)
+        self.sendVplFiles(self.urlFilesSave.replace("ID_QUESTAO", vpl.id), vpl.executionFiles)
 
-    def sendExecutionFiles(self, vpl):
-        params = {'files':vpl.executionFiles,
+        vplFiles = []
+
+        if(vpl.requiredFile):
+            vplFiles.append(vpl.requiredFile)
+        
+        self.sendVplFiles(self.urlReqFilesSave.replace("ID_QUESTAO", vpl.id), [vpl.requiredFile])
+
+    def sendVplFiles(self, url, vplFiles):
+        params = {'files': vplFiles,
                   'comments':''}
         files = json.dumps(params, default=self.__dumper, indent=2)
 
-        self.browser.open(self.urlFilesSave.replace("ID_QUESTAO", vpl.id), 
-                               data=files)
+        self.browser.open(url, data=files)
 
     def listAll(self):
         self.browser.open(self.urlCourse)
@@ -139,7 +146,7 @@ class VPL(object):
         self.requiredFile = None
 
     def load(self, path):
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
             self.name = data["title"]
             self.description = data["description"]
