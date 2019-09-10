@@ -1,7 +1,4 @@
 '''
-TODO: REALIZAR O RM DE QUESTÕES POR ID[MOODLEAPI.py rm 22862]
-        https://moodle.quixada.ufc.br/course/mod.php?delete=22266&confirm=1
-        https://moodle.quixada.ufc.br/course/mod.php?sesskey=psSlekP7ko&sr=0&delete=22266&confirm=1
 TODO: DOWNLOAD -> INCLUIR TODOS OS ARQUIVOS DE TMP NO TXT
 TODO: ADD/UPDATE -> INSERIR A CONFIGURAÇÃO DE DATA DE LIMITE DA QUESTÃO
 TODO: UPDATE -> CORRIGIR BUG DOS CASOS DE TESTES NÃO ESTAREM SENDO ENVIADOS
@@ -9,6 +6,7 @@ TODO: REMOVER TODAS AS URLS ESTÁTICAS DO CÓDIGO E CENTRALIZA-LAS NA CLASSE MOO
 TODO: INCLUIR EXCEPTIONS
 '''
 from bs4 import BeautifulSoup
+import re
 import mechanize
 import json
 import os
@@ -27,6 +25,7 @@ class MoodleAPI(object):
         self.course       = course
         self.section      = section
         self.urlCourse    = urlBase + "/course/view.php?id=" + course
+        self.urlDeleteVpl = urlBase + '/course/mod.php?sesskey=NUM_SESSKEY&sr=0&delete=ID_QUESTAO&confirm=1'
         self.urlNewVpl    = urlBase + "/course/modedit.php?add=vpl&type=&course=" + course + "&section=" + section + "&return=0&sr=0"
         self.urlNewTest   = urlBase + "/mod/vpl/forms/testcasesfile.php?id=ID_QUESTAO&edit=3"
         self.urlTestSave  = urlBase + "/mod/vpl/forms/testcasesfile.json.php?id=ID_QUESTAO&action=save"
@@ -40,6 +39,7 @@ class MoodleAPI(object):
             self.browser['username'] = self.username
             self.browser['password'] = self.password
             self.browser.submit()
+
             print(self.browser.title())        
         except mechanize.FormNotFoundError as e:
             print("Usuário já logado!")
@@ -57,6 +57,7 @@ class MoodleAPI(object):
 
         self.getVplId(vpl)
         self.setTests(vpl)
+        print('Questão #%s adicionada com sucesso' % vpl.id)
     def getAll(self, saveActivities):
         self.browser.open(self.urlCourse)
         self.login()
@@ -151,7 +152,23 @@ class MoodleAPI(object):
         self.browser.open(self.urlFilesSave, 
                                data=files)
             
-        print("Questão atualizada com sucesso!!")    
+        print("Questão atualizada com sucesso!!")
+
+    def remove(self, id_questao):
+        self.browser.open(self.urlCourse)
+        self.login()
+        
+        #Obter sesskey
+        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+        sesskey = soup.find(title='Sair')['href'].replace(self.urlBase + '/login/logout.php?sesskey=','')
+
+        urlDelete = self.urlDeleteVpl.replace('NUM_SESSKEY',sesskey).replace('ID_QUESTAO', id_questao)
+
+        try:
+            self.browser.open(urlDelete)        
+            print("Questão removida com sucesso!!")
+        except mechanize._response.HTTPError as e:
+            print('Não foi possível remover a questão. \n\t %s' % e)
     def setTests(self,vpl):
         try:
             self.browser.open(self.urlNewTest.replace("ID_QUESTAO", vpl.id))
@@ -159,7 +176,7 @@ class MoodleAPI(object):
             self.browser.open(self.urlTestSave.replace("ID_QUESTAO", vpl.id), 
                                data=self.__formatPayloadCaseTests(vpl.tests))
             
-            print("Teste cadastrado com sucesso!!")
+            print("\tTeste cadastrado com sucesso!!")
         except Exception as e:
             print(e)
     def loadFiles(self):
@@ -188,12 +205,16 @@ class MoodleAPI(object):
         except FileNotFoundError as e:
             print(e)       
     def getVplId(self, vpl):
-        self.browser.open("https://moodle.quixada.ufc.br/course/view.php?id=344")
+        self.browser.open(self.urlCourse)
         self.login()
-        for l in self.browser.links():
-            if l.text.replace(" Laboratório Virtual de Programação","") == vpl.name:
-                vpl.id = l.url.replace("https://moodle.quixada.ufc.br/mod/vpl/view.php?id=","")
-                return vpl.id            
+            
+        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+
+        activities = soup.select('ul.section > li')
+        for activity in activities:
+            if(activity.get_text().replace(' Laboratório Virtual de Programação','') == vpl.name):
+                vpl.id = activity['id'].replace('module-','')
+                return vpl.id
     def __dumper(self, obj):
         try:
             return obj.toJSON()
@@ -249,6 +270,10 @@ def main_update(args):
     api.loadFiles()
     for v in api.vpls:        
         api.update(args.id_questao, v)
+def main_remove(args):
+    api = MoodleAPI("", args.apiData['login'], args.apiData['senha'], args.apiData['url'], args.apiData['curso'], "")
+    for id in args.id_questao:
+        api.remove(id)
 def main():
     login = senha = url = curso = ""
     cfg = configparser.ConfigParser()
@@ -300,6 +325,11 @@ def main():
     parser_update.add_argument('id_questao', type=str, action='store', help='Id da questão a ser atualizada')
     parser_update.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
     parser_update.set_defaults(apiData=cfg.defaults(), func=main_update)
+
+    #remove
+    parser_remove = subparsers.add_parser('rm', help="Exclui uma questão do moodle")
+    parser_remove.add_argument('id_questao', type=str, nargs='+', action='store', help='Id da questão a ser removida(Ou pacote de ids)')
+    parser_remove.set_defaults(apiData=cfg.defaults(), func=main_remove)
 
     args = parser.parse_args()
 
